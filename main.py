@@ -59,10 +59,10 @@ def q2(spark_context: SparkContext, data_frame: DataFrame):
     @udf(returnType=FloatType())
     def calc_variance(aggregate_vector):
         # Calculate the mean of the aggregate vector
-        mean = sum(aggregate_vector) / 3
+        mean = sum(aggregate_vector) / 10000
         
         # Calculate the variance of the aggregate vector
-        variance = sum([(x - mean) ** 2 for x in aggregate_vector]) / 3
+        variance = sum([(x - mean) ** 2 for x in aggregate_vector]) / 10000
         
         return variance
     # Get a table containing all aggregate vectors
