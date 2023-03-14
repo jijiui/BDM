@@ -1,14 +1,9 @@
-import os
-import sys
 from pyspark import SparkConf, SparkContext, RDD
 from pyspark.sql import SparkSession, DataFrame, Row
-from pyspark.sql.types import FloatType
-from pyspark.sql.functions import col, sum, variance
+from pyspark.sql.types import StructType, StructField, StringType, ArrayType, IntegerType, FloatType
+from pyspark.sql.functions import col, array,expr,var_pop
 from pyspark.sql.functions import udf
 from pyspark.sql.types import FloatType
-os.system("set PYSPARK_PYTHON=python")
-import findspark
-findspark.init()
 
 
 def get_spark_context(on_server) -> SparkContext:
@@ -26,15 +21,28 @@ def get_spark_context(on_server) -> SparkContext:
 
 
 def q1a(spark_context: SparkContext, on_server: bool) -> DataFrame:
-    vectors_file_path = "vectors.csv" if on_server else r"C:\Users\handa\OneDrive - TU Eindhoven\Q7\BDM\2AMD15 Data Generator\vectors.csv" 
+    vectors_file_path = "/vectors.csv" if on_server else r"C:\Users\handa\OneDrive - TU Eindhoven\Q7\BDM\2AMD15 Data Generator\vectors_10000.csv" 
 
     spark_session = SparkSession(spark_context)
-
+    # url = spark_session.sparkContext.uiWebUrl
+    # print("Spark UI running on {}".format(url))
     # TODOdone: Implement Q1a here by creating a Dataset of DataFrame out of the file at {@code vectors_file_path}.
-    df = spark_session.read.option("inferSchema",True).\
-        csv(vectors_file_path)
-    print(df)
-    df.show()
+    schema = StructType([
+        StructField("Name", StringType(), True),
+        *[StructField(f"int_column_{i}", IntegerType(), True) for i in range(1, 10001)]
+    ])
+
+    # Read the CSV file with the specified schema
+    df = spark_session.read \
+        .option("header", False) \
+        .option("sep", ",") \
+        .schema(schema) \
+        .csv(vectors_file_path)
+    #df.show()
+    print("The csv file has been read into a dataframe")
+    cols_to_select = [col_name for col_name in df.columns[1:]]
+    df = df.select(col("Name"), array(*cols_to_select).alias("Vector"))
+    # df.show()
     return df
 
 
@@ -43,59 +51,40 @@ def q1b(spark_context: SparkContext, on_server: bool) -> RDD:
 
     # TODO: Implement Q1b here by creating an RDD out of the file at {@code vectors_file_path}.
 
-    rdd = spark_context.textFile(vectors_file_path) \
-        .map(lambda line: [float(x) for x in line.split(',')])
-    #dataColl=rdd.collect()
-    # for row in dataColl:
-    #     print(row[0] + "," +str(row[1]))
-
-    return rdd
-
-def get_string(n):
-    result = []
-    for i in range(1, n + 1):
-        for j in range(1, 4):
-            result.append(f"v{j}._c{i}")
-    return ", ".join(result)
-
-def get_sum(x):
-    s = 0
-    for i in x:
-        s = s + i
-    return s
+    return None
 
 def q2(spark_context: SparkContext, data_frame: DataFrame):
     spark = SparkSession(spark_context)
-    def aggregate_variance(*data):
-        # Split data into three vectors
-        n = 3 #lenth of vector
-        v1 = data[:n]
-        v2 = data[n:2*n]
-        v3 = data[2*n:]
+    
+    @udf(returnType=FloatType())
+    def calc_variance(aggregate_vector):
+        # Calculate the mean of the aggregate vector
+        mean = sum(aggregate_vector) / 3
+        
+        # Calculate the variance of the aggregate vector
+        variance = sum([(x - mean) ** 2 for x in aggregate_vector]) / 3
+        
+        return variance
+    # Get a table containing all aggregate vectors
+    # triple_vectors_df = data_frame.select("Name", "Vector").withColumnRenamed("Name", "X").withColumnRenamed("Vector", "X_vector").crossJoin(data_frame.select("Name", "Vector").withColumnRenamed("Name", "Y").withColumnRenamed("Vector", "Y_vector")).crossJoin(data_frame.select("Name", "Vector").withColumnRenamed("Name", "Z").withColumnRenamed("Vector", "Z_vector")).filter("X < Y AND Y < Z")
+    result_df = data_frame.select("Name", "Vector").withColumnRenamed("Name", "X").withColumnRenamed("Vector", "X_vector").crossJoin(data_frame.select("Name", "Vector").withColumnRenamed("Name", "Y").withColumnRenamed("Vector", "Y_vector")).filter("X < Y")
+    result_df = result_df.crossJoin(data_frame.select("Name", "Vector").withColumnRenamed("Name", "Z").withColumnRenamed("Vector", "Z_vector")).filter("Y < Z")
+    print("The cross join has been done")
+    # result_df.show()
+    result_df = result_df.withColumn("agg_vector", expr("transform(arrays_zip(X_vector, Y_vector,Z_vector), x -> x.X_vector + x.Y_vector + x.Z_vector)")).select("X", "Y", "Z", "agg_vector")
+    print("The aggregate vectors have been calculated")
+    #result_df.show()
 
-        # Calculate aggregate vector
-        aggregate_vector = [get_sum(x) for x in zip(v1,v2,v3)]
-        # Calculate mean
-        mean = get_sum(aggregate_vector)/n
-
-        # Calculate aggregate variance
-        s = 0
-        for x in aggregate_vector:            
-            s = s + (x-mean)**2
-
-        aggregate_variance = s/n
-
-        return aggregate_variance
-
-    spark.udf.register("agg_variance", aggregate_variance, FloatType())
-
-    data_frame.createOrReplaceTempView("vectors")
-
-    #triples_df = spark.sql("SELECT v1._c0 AS X, v2._c0 AS Y, v3._c0 AS Z, agg_variance(v1._c1, v2._c1, v3._c1, v1._c2, v2._c2, v3._c2, v1._c3, v2._c3, v3._c3) AS var FROM vectors v1, vectors v2, vectors v3 WHERE v1._c0 < v2._c0 AND v2._c0 < v3._c0")
-    triples_df = spark.sql("SELECT v1._c0 AS X, v2._c0 AS Y, v3._c0 AS Z, agg_variance("+get_string(3)+") AS var FROM vectors v1, vectors v2, vectors v3 WHERE v1._c0 < v2._c0 AND v2._c0 < v3._c0")
-
-    result_df = triples_df.filter("var <= 1000")
+    # agg_vectors_df.createOrReplaceTempView("agg_vectors")
+    result_df = result_df.withColumn("var", calc_variance(col("agg_vector")))
+    print("The variance has been calculated")
+    #result_df.show()
+    result_df = result_df.select("X", "Y", "Z", "var")
     result_df.show()
+    #print("Line numbers are",result_df.count())
+    #result_df = result_df.filter(col("var") <= 410)
+    #print("The variance has been filtered")
+    #result_df.show() # cannot show the filtered result
 
 def q3(spark_context: SparkContext, rdd: RDD):
     # TODO: Imlement Q3 here
