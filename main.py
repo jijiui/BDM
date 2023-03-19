@@ -98,7 +98,7 @@ def q2(spark_context: SparkContext, data_frame: DataFrame):
     result_df5 = result_df4.select("X", "Y", "Z", "var")
     # print("The number of partitions is",result_df5.rdd.getNumPartitions())
     print("there are ",result_df5.count(),"rows in the dataframe")
-    result_df5.show() # cannot show the filtered result
+    result_df5.show() # no need to show the dataframe as specified in the assignment
     # print("The time taken is",time.time()-tick)
 
 def q3(spark_context: SparkContext, rdd: RDD):
