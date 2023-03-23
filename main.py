@@ -49,7 +49,7 @@ def q1b(spark_context: SparkContext, on_server: bool) -> RDD:
 def q2(spark_context: SparkContext, data_frame: DataFrame):
     spark = SparkSession(spark_context)
     # tick = time.time()
-    data_frame = data_frame.distinct()
+    data_frame = data_frame.cache()
     @udf(returnType=FloatType())
     def aggregate_variance(vectors):
         vectors = np.array(vectors)
